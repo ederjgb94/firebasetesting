@@ -39,6 +39,7 @@ dependencies:
   cloud_firestore: ^4.8.2
   firebase_database: ^10.2.3
   faker: ^2.1.0
+  get_storage: ^2.1.1
 
 dev_dependencies:
   flutter_test:
