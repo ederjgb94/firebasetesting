@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:faker/faker.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:firebasetesting/firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
@@ -14,15 +15,13 @@ Future<void> main() async {
 
   await GetStorage.init();
 
-  // var db = FirebaseFirestore.instance;
-  // await db.waitForPendingWrites();
-  // db.settings = const Settings(
-  //   persistenceEnabled: true,
-  //   cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-  //   host: '10.0.2.2:8080',
-  // );
+  var db = FirebaseFirestore.instance;
+  await db.waitForPendingWrites();
+  db.settings = const Settings(
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
 
-  FirebaseFirestore.instance.useFirestoreEmulator('10.0.2.2', 8080);
+  // FirebaseFirestore.instance.useFirestoreEmulator('10.0.2.2', 8080);
 
   runApp(const MyApp());
 }
@@ -55,6 +54,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final int _counter = 0;
   var db = FirebaseFirestore.instance;
+  var rl = FirebaseDatabase.instance.ref();
 
   Future<void> _incrementCounter() async {
     var db = FirebaseFirestore.instance;
@@ -67,7 +67,8 @@ class _MyHomePageState extends State<MyHomePage> {
         'timestamp': time,
       },
     );
-    setState(() {});
+    await rlUpdate();
+    // setState(() {});
   }
 
   Future obtener() async {
@@ -96,23 +97,29 @@ class _MyHomePageState extends State<MyHomePage> {
     var cacheTime = box.read('cacheTime');
 
     if (cacheTime == null) {
-      var usersServer = await db
-          .collection("users")
-          .orderBy("timestamp", descending: true)
+      var profesoresServer = await db
+          .collection("ciclos")
+          .doc('2023 - 3 Otoño')
+          .collection('profesores')
+          .orderBy('lastUpdate', descending: true)
           .get(
             GetOptions(source: SERVER),
           );
       await box.write('cacheTime',
-          usersServer.docs.first.data()['timestamp'].toDate().toString());
+          profesoresServer.docs.first.data()['lastUpdate'].toDate().toString());
       print(box.read('cacheTime').toString());
-      return usersServer.docs;
+      return profesoresServer.docs;
     } else {
       var cacheTime = box.read('cacheTime');
       print(cacheTime.toString());
+
+      //actualiza mi cache
       await db
-          .collection('users')
+          .collection('ciclos')
+          .doc('2023 - 3 Otoño')
+          .collection('profesores')
           .where(
-            'timestamp',
+            'lastUpdate',
             isGreaterThan: Timestamp.fromDate(DateTime.parse(cacheTime)),
           )
           .get(
@@ -121,16 +128,73 @@ class _MyHomePageState extends State<MyHomePage> {
           .then(
               (value) => print('se trajeron del server: ${value.docs.length}'));
 
-      var users = await db
-          .collection('users')
-          .orderBy('timestamp', descending: true)
+      //obtengo mi cache con datos actualizados
+      var profesores = await db
+          .collection('ciclos')
+          .doc('2023 - 3 Otoño')
+          .collection('profesores')
+          .orderBy('lastUpdate', descending: true)
           .get(
             GetOptions(source: CACHE),
           );
+
+      //actualizo cache
       await box.write('cacheTime',
-          users.docs.first.data()['timestamp'].toDate().toString());
-      return users.docs;
+          profesores.docs.first.data()['lastUpdate'].toDate().toString());
+      return profesores.docs;
     }
+  }
+
+  Future<void> rlUpdate() async {
+    await rl.set(
+      {
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+  }
+
+  Widget listaUsers() {
+    return FutureBuilder(
+      future: testobtener(),
+      builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
+        if (snapshot.hasData) {
+          return ListView.builder(
+            itemCount: snapshot.data.length,
+            itemBuilder: (BuildContext context, int index) {
+              return ListTile(
+                onTap: () async {
+                  var profesor = snapshot.data[index];
+                  await db
+                      .collection('ciclos')
+                      .doc('2023 - 3 Otoño')
+                      .collection('profesores')
+                      .doc(profesor.id)
+                      .update(
+                    {
+                      'nombre': 'updated ${faker.person.firstName()}',
+                      'lastUpdate': FieldValue.serverTimestamp(),
+                    },
+                  );
+                  await rlUpdate();
+
+                  //prueba de eliminar...
+                  // var user = snapshot.data[index];
+                  // await db.collection('users').doc(user.id).delete();
+                  // setState(() {});
+                },
+                title: Text('$index ${snapshot.data[index].data()['nombre']}'),
+                subtitle: Text(snapshot.data[index]
+                    .data()['lastUpdate']
+                    .toDate()
+                    .toString()),
+              );
+            },
+          );
+        } else {
+          return const Center(child: CircularProgressIndicator());
+        }
+      },
+    );
   }
 
   @override
@@ -140,36 +204,24 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
-      body: FutureBuilder(
-        future: testobtener(),
-        builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
-          if (snapshot.hasData) {
-            return ListView.builder(
-              itemCount: snapshot.data.length,
-              itemBuilder: (BuildContext context, int index) {
-                return ListTile(
-                  onTap: () async {
-                    var user = snapshot.data[index];
-                    await db.collection('users').doc(user.id).update(
-                      {
-                        'first': 'updated ${faker.person.firstName()}',
-                      },
-                    );
-                    // var user = snapshot.data[index];
-                    // await db.collection('users').doc(user.id).delete();
-                    setState(() {});
-                  },
-                  title: Text(snapshot.data[index].data()['first']),
-                  subtitle: Text(snapshot.data[index]
-                      .data()['timestamp']
-                      .toDate()
-                      .toString()),
-                );
-              },
-            );
-          } else {
-            return const Center(child: CircularProgressIndicator());
+      body: StreamBuilder<DatabaseEvent>(
+        stream: FirebaseDatabase.instance.ref().onChildChanged,
+        builder: (BuildContext context, AsyncSnapshot<DatabaseEvent> snapshot) {
+          if (snapshot.hasError) {
+            return const Text('Error al obtener los datos');
           }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return listaUsers();
+          }
+
+          if (snapshot.hasData) {
+            final data = snapshot.data!.snapshot.value;
+            // Procesa los datos como desees
+            return listaUsers();
+          }
+
+          return const Text('No hay datos');
         },
       ),
       floatingActionButton: FloatingActionButton(
