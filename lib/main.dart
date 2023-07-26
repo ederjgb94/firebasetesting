@@ -27,7 +27,10 @@ Future<void> main() async {
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
 
+  /** SETUP emulators */
   // FirebaseFirestore.instance.useFirestoreEmulator('10.0.2.2', 8080);
+  // FirebaseDatabase.instance.useDatabaseEmulator('10.0.2.2', 9000);
+  // await FirebaseStorage.instance.useStorageEmulator('10.0.2.2', 9199);
 
   runApp(const MyApp());
 }
