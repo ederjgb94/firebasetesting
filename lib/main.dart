@@ -1,12 +1,16 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity/connectivity.dart';
 import 'package:faker/faker.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebasetesting/firebase_options.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,7 +58,6 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final int _counter = 0;
   var db = FirebaseFirestore.instance;
   var rl = FirebaseDatabase.instance.ref();
 
@@ -75,23 +78,22 @@ class _MyHomePageState extends State<MyHomePage> {
       },
     );
     await rlUpdate();
-    // setState(() {});
   }
 
-  Future obtener() async {
-    Source CACHE = Source.cache;
-    Source SERVER = Source.server;
+  // Future obtener() async {
+  //   Source CACHE = Source.cache;
+  //   Source SERVER = Source.server;
 
-    FirebaseFirestore db = FirebaseFirestore.instance;
-    var userCache = await db
-        .collection("users")
-        .orderBy("timestamp", descending: true)
-        .limit(1)
-        .get(
-          GetOptions(source: CACHE),
-        );
-    return userCache.docs;
-  }
+  //   FirebaseFirestore db = FirebaseFirestore.instance;
+  //   var userCache = await db
+  //       .collection("users")
+  //       .orderBy("timestamp", descending: true)
+  //       .limit(1)
+  //       .get(
+  //         GetOptions(source: CACHE),
+  //       );
+  //   return userCache.docs;
+  // }
 
   Future testobtener() async {
     Source cache = Source.cache;
@@ -178,6 +180,17 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  Future<XFile?> getPhoto() async {
+    final ImagePicker picker = ImagePicker();
+
+    final XFile? photo = await picker.pickImage(source: ImageSource.camera);
+
+    if (photo != null) {
+      return photo;
+    }
+    return null;
+  }
+
   Widget listaUsers() {
     return FutureBuilder(
       future: testobtener(),
@@ -259,7 +272,17 @@ class _MyHomePageState extends State<MyHomePage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           FloatingActionButton(
-            onPressed: () {},
+            onPressed: () async {
+              var photo = await getPhoto();
+              final storage = FirebaseStorage.instance.ref();
+              if (photo != null) {
+                await storage
+                    .child('images/${DateTime.now().millisecondsSinceEpoch}')
+                    .putFile(
+                      File(photo.path),
+                    );
+              }
+            },
             child: const Icon(
               Icons.image,
             ),
