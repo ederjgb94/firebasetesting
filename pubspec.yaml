@@ -40,6 +40,8 @@ dependencies:
   firebase_database: ^10.2.3
   faker: ^2.1.0
   get_storage: ^2.1.1
+  connectivity: ^3.0.6
+  firebase_storage: ^11.2.5
 
 dev_dependencies:
   flutter_test:

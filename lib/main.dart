@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity/connectivity.dart';
 import 'package:faker/faker.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebasetesting/firebase_options.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 
@@ -56,6 +58,11 @@ class _MyHomePageState extends State<MyHomePage> {
   var db = FirebaseFirestore.instance;
   var rl = FirebaseDatabase.instance.ref();
 
+  Future<bool> isConnected() async {
+    var connectivityResult = await (Connectivity().checkConnectivity());
+    return connectivityResult != ConnectivityResult.none;
+  }
+
   Future<void> _incrementCounter() async {
     var db = FirebaseFirestore.instance;
     var time = FieldValue.serverTimestamp();
@@ -87,8 +94,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future testobtener() async {
-    Source CACHE = Source.cache;
-    Source SERVER = Source.server;
+    Source cache = Source.cache;
+    Source server = Source.server;
 
     FirebaseFirestore db = FirebaseFirestore.instance;
 
@@ -103,30 +110,45 @@ class _MyHomePageState extends State<MyHomePage> {
           .collection('profesores')
           .orderBy('lastUpdate', descending: true)
           .get(
-            GetOptions(source: SERVER),
+            GetOptions(source: server),
           );
       await box.write('cacheTime',
           profesoresServer.docs.first.data()['lastUpdate'].toDate().toString());
-      print(box.read('cacheTime').toString());
+      if (kDebugMode) {
+        print('Mi cache es null, DateStart: ${box.read('cacheTime')}');
+      }
       return profesoresServer.docs;
     } else {
-      var cacheTime = box.read('cacheTime');
-      print(cacheTime.toString());
+      if (kDebugMode) {
+        print('Mi cache actual: $cacheTime');
+      }
 
       //actualiza mi cache
-      await db
-          .collection('ciclos')
-          .doc('2023 - 3 Otoño')
-          .collection('profesores')
-          .where(
-            'lastUpdate',
-            isGreaterThan: Timestamp.fromDate(DateTime.parse(cacheTime)),
-          )
-          .get(
-            GetOptions(source: SERVER),
-          )
-          .then(
-              (value) => print('se trajeron del server: ${value.docs.length}'));
+      //si no hay internet no se actualiza
+      if (await isConnected()) {
+        var profesoresLinea = await db
+            .collection('ciclos')
+            .doc('2023 - 3 Otoño')
+            .collection('profesores')
+            .where(
+              'lastUpdate',
+              isGreaterThan: cacheTime,
+            )
+            .get(
+              GetOptions(source: server),
+            );
+        if (kDebugMode) {
+          print('se trajeron de linea: ${profesoresLinea.docs.length}');
+        }
+        if (profesoresLinea.docs.isNotEmpty) {
+          await box.write(
+              'cacheTime',
+              profesoresLinea.docs.first
+                  .data()['lastUpdate']
+                  .toDate()
+                  .toString());
+        }
+      }
 
       //obtengo mi cache con datos actualizados
       var profesores = await db
@@ -135,22 +157,25 @@ class _MyHomePageState extends State<MyHomePage> {
           .collection('profesores')
           .orderBy('lastUpdate', descending: true)
           .get(
-            GetOptions(source: CACHE),
+            GetOptions(source: cache),
           );
-
+      if (kDebugMode) {
+        print('se trajeron del cache: ${profesores.docs.length}');
+      }
       //actualizo cache
-      await box.write('cacheTime',
-          profesores.docs.first.data()['lastUpdate'].toDate().toString());
+
       return profesores.docs;
     }
   }
 
   Future<void> rlUpdate() async {
-    await rl.set(
-      {
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      },
-    );
+    if (await isConnected()) {
+      await rl.set(
+        {
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    }
   }
 
   Widget listaUsers() {
@@ -204,30 +229,48 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
-      body: StreamBuilder<DatabaseEvent>(
-        stream: FirebaseDatabase.instance.ref().onChildChanged,
-        builder: (BuildContext context, AsyncSnapshot<DatabaseEvent> snapshot) {
-          if (snapshot.hasError) {
-            return const Text('Error al obtener los datos');
-          }
+      body: FutureBuilder(
+        future: isConnected(),
+        builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
+          if (snapshot.hasData && snapshot.data == true) {
+            return StreamBuilder<DatabaseEvent>(
+              stream: () {
+                var ref = FirebaseDatabase.instance.ref();
+                return ref.onChildChanged;
+              }(),
+              builder: (BuildContext context,
+                  AsyncSnapshot<DatabaseEvent> snapshot) {
+                if (snapshot.hasError) {
+                  return const Text('Error al obtener los datos');
+                }
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
+                return listaUsers();
+              },
+            );
+          } else if (snapshot.hasData && snapshot.data == false) {
+            //no tengo internet y muestro mi cache lista
             return listaUsers();
+          } else {
+            return const Center(child: CircularProgressIndicator());
           }
-
-          if (snapshot.hasData) {
-            final data = snapshot.data!.snapshot.value;
-            // Procesa los datos como desees
-            return listaUsers();
-          }
-
-          return const Text('No hay datos');
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton(
+            onPressed: () {},
+            child: const Icon(
+              Icons.image,
+            ),
+          ),
+          const SizedBox(height: 15),
+          FloatingActionButton(
+            onPressed: _incrementCounter,
+            tooltip: 'Increment',
+            child: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }
