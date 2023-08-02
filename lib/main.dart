@@ -280,7 +280,8 @@ class _MyHomePageState extends State<MyHomePage> {
               final storage = FirebaseStorage.instance.ref();
               if (photo != null) {
                 await storage
-                    .child('images/${DateTime.now().millisecondsSinceEpoch}')
+                    .child(
+                        'images/${DateTime.now().millisecondsSinceEpoch}.jpg')
                     .putFile(
                       File(photo.path),
                     );
